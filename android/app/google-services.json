@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "279642591197",
+    "project_id": "hungo-80840",
+    "storage_bucket": "hungo-80840.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:279642591197:android:f8d266a6e2cb36ba95f034",
+        "android_client_info": {
+          "package_name": "com.example.hungo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCFLG_eWWK5uNAWK_Xli8nr7TpoGcQpWWE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
