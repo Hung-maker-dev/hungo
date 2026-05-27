@@ -74,12 +74,12 @@ class _MainScaffoldState extends State<MainScaffold> {
       body: IndexedStack(
         index: _idx,
         children: const [
-          SearchScreen(),        // 0
-          GrammarListScreen(),   // 1
-          RoadmapScreen(),       // 2
-          ReadingListScreen(),   // 3
-          ListeningListScreen(), // 4
-          ProfileScreen(),       // 5
+          SearchScreen(),        // 0 - Từ vựng
+          GrammarListScreen(),   // 1 - Ngữ pháp
+          RoadmapScreen(),       // 2 - Lộ trình
+          ReadingListScreen(),   // 3 - Đọc
+          ListeningListScreen(), // 5 - Nghe ← SỬA LẠI: Từ vị trí 4 lên 5
+          ProfileScreen(),       // 4 - Hồ sơ ← SỬA LẠI: Từ vị trí 5 xuống
         ],
       ),
       bottomNavigationBar: NavigationBar(
