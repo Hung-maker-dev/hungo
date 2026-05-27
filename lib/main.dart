@@ -38,6 +38,9 @@ import 'features/admin/admin_vocab_form_screen.dart';
 import 'features/admin/admin_user_list_screen.dart';
 import 'features/roadmap/roadmap_screen.dart';
 import 'features/roadmap/roadmap_setup_screen.dart';
+import 'features/writing/writing_list_screen.dart';
+import 'features/writing/writing_exercise_screen.dart';
+import 'features/admin/admin_lesson_list_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -122,6 +125,10 @@ class EnglishApp extends StatelessWidget {
       case '/admin/users':     page = const AdminUserListScreen(); break;
       case '/roadmap':         page = const RoadmapScreen(); break;
       case '/roadmap/setup':   page = const RoadmapSetupScreen(); break;
+      case '/writing':         page = const WritingListScreen(); break;
+      case '/writing/exercise':
+        page = WritingExerciseScreen(lesson: s.arguments); break;
+      case '/admin/lessons':   page = const AdminLessonListScreen(); break;
       default:
         page = Scaffold(body: Center(child: Text('404: \${s.name}')));
     }

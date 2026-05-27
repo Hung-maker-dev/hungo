@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../core/providers/roadmap_provider.dart';
+import '../../core/database/database_helper.dart';
 import '../../core/providers/auth_provider.dart';
 import '../../core/theme/app_theme.dart';
 
@@ -275,6 +276,177 @@ class _TodayTab extends StatelessWidget {
   }
 }
 
+// ── Widget từ vựng ngẫu nhiên ───────────────────────────────────────────────
+class _RandomVocabWidget extends StatefulWidget {
+  @override
+  State<_RandomVocabWidget> createState() => _RandomVocabWidgetState();
+}
+
+class _RandomVocabWidgetState extends State<_RandomVocabWidget> {
+  Map<String, dynamic>? _word;
+  bool _loading = false;
+  bool _flipped = false;
+
+  static const _topics = ['travel','food','business','technology',
+    'health','education','sports','nature','daily life'];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRandom();
+  }
+
+  Future<void> _loadRandom() async {
+    setState(() { _loading = true; _flipped = false; });
+    try {
+      final db = await DatabaseHelper.instance.database;
+      final topic = (_topics..shuffle()).first;
+      // Lấy ngẫu nhiên 1 từ từ topic hoặc bất kỳ
+      List<Map<String, dynamic>> rows = await db.rawQuery(
+          'SELECT * FROM vocabulary WHERE topic = ? ORDER BY RANDOM() LIMIT 1',
+          [topic]);
+      if (rows.isEmpty) {
+        rows = await db.rawQuery(
+            'SELECT * FROM vocabulary ORDER BY RANDOM() LIMIT 1');
+      }
+      if (mounted) setState(() { _word = rows.isNotEmpty ? rows.first : null; _loading = false; });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            const Row(children: [
+              Icon(Icons.auto_stories_rounded, color: AppTheme.skillVocab, size: 20),
+              SizedBox(width: 8),
+              Text('Từ vựng hôm nay',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+            ]),
+            IconButton(
+              icon: const Icon(Icons.refresh_rounded, color: AppTheme.primary, size: 20),
+              onPressed: _loadRandom,
+              tooltip: 'Từ mới',
+              padding: EdgeInsets.zero, constraints: const BoxConstraints(),
+            ),
+          ]),
+          const SizedBox(height: 12),
+          _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _word == null
+              ? Center(child: Column(children: [
+            Text('Chưa có từ vựng. Hãy search để thêm!',
+                style: TextStyle(color: Colors.grey.shade600)),
+            const SizedBox(height: 8),
+            ElevatedButton(
+              onPressed: () => Navigator.pushNamed(context, '/vocab/search'),
+              child: const Text('Search từ ngay'),
+            ),
+          ]))
+              : GestureDetector(
+            onTap: () => setState(() => _flipped = !_flipped),
+            child: AnimatedCrossFade(
+              duration: const Duration(milliseconds: 300),
+              crossFadeState: _flipped
+                  ? CrossFadeState.showSecond
+                  : CrossFadeState.showFirst,
+              firstChild: _buildFront(),
+              secondChild: _buildBack(),
+            ),
+          ),
+          if (_word != null && !_loading) ...[
+            const SizedBox(height: 10),
+            Text(_flipped ? 'Nhấn để xem từ' : 'Nhấn để xem nghĩa',
+                style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                textAlign: TextAlign.center),
+          ],
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildFront() => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      gradient: const LinearGradient(
+        colors: [AppTheme.primary, AppTheme.primaryDark],
+        begin: Alignment.topLeft, end: Alignment.bottomRight,
+      ),
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Column(children: [
+      Text(_word!['word'] ?? '',
+          style: const TextStyle(color: Colors.white, fontSize: 28,
+              fontWeight: FontWeight.bold)),
+      if (_word!['phonetic'] != null)
+        Text(_word!['phonetic'], style: const TextStyle(
+            color: Colors.white70, fontSize: 14)),
+      if (_word!['part_of_speech'] != null)
+        Container(
+          margin: const EdgeInsets.only(top: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(color: Colors.white24,
+              borderRadius: BorderRadius.circular(8)),
+          child: Text(_word!['part_of_speech'],
+              style: const TextStyle(color: Colors.white, fontSize: 12)),
+        ),
+      if (_word!['topic'] != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            "📌 ${_word!['topic']}",
+            style: const TextStyle(
+              color: Colors.white54,
+              fontSize: 11,
+            ),
+          ),
+        ),
+    ]),
+  );
+
+  Widget _buildBack() => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: AppTheme.primary.withOpacity(0.05),
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: AppTheme.primary.withOpacity(0.3)),
+    ),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(_word!['definition'] ?? '',
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, height: 1.5)),
+      if (_word!['definition_vi'] != null) ...[
+        const SizedBox(height: 6),
+        Text(
+          "🇻🇳 ${_word!['definition_vi']}",
+          style: TextStyle(
+            color: Colors.grey.shade700,
+            fontSize: 14,
+          ),
+        ),
+      ],
+      if (_word!['example'] != null) ...[
+        const SizedBox(height: 8),
+        Text(
+          "\"${_word!['example']}\"",
+          style: TextStyle(
+            fontStyle: FontStyle.italic,
+            color: Colors.grey.shade600,
+            fontSize: 13,
+          ),
+        ),
+      ],
+    ]),
+  );
+}
+
 // ── Tab 2: Tiến độ tổng thể ──────────────────────────────────────────────────
 class _ProgressTab extends StatelessWidget {
   final RoadmapProvider rp;
@@ -303,42 +475,42 @@ class _ProgressTab extends StatelessWidget {
                 child: last7.isEmpty
                     ? const Center(child: Text('Chưa có dữ liệu'))
                     : BarChart(BarChartData(
-                        alignment: BarChartAlignment.spaceAround,
-                        maxY: 100,
-                        barTouchData: BarTouchData(enabled: true),
-                        titlesData: FlTitlesData(
-                          leftTitles: const AxisTitles(
-                              sideTitles: SideTitles(showTitles: false)),
-                          rightTitles: const AxisTitles(
-                              sideTitles: SideTitles(showTitles: false)),
-                          topTitles: const AxisTitles(
-                              sideTitles: SideTitles(showTitles: false)),
-                          bottomTitles: AxisTitles(sideTitles: SideTitles(
-                            showTitles: true,
-                            getTitlesWidget: (v, _) {
-                              final i = v.toInt();
-                              if (i >= last7.length) return const SizedBox();
-                              final d = DateTime.parse(last7[i].date);
-                              return Text('${d.day}/${d.month}',
-                                  style: const TextStyle(fontSize: 10));
-                            },
-                          )),
-                        ),
-                        gridData: const FlGridData(show: false),
-                        borderData: FlBorderData(show: false),
-                        barGroups: List.generate(last7.length, (i) {
-                          final pct = (last7[i].completionRate * 100);
-                          return BarChartGroupData(x: i, barRods: [
-                            BarChartRodData(
-                              toY: pct,
-                              color: pct >= 80 ? Colors.green
-                                  : pct >= 50 ? AppTheme.primary : Colors.red.shade300,
-                              width: 28,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                          ]);
-                        }),
-                      )),
+                  alignment: BarChartAlignment.spaceAround,
+                  maxY: 100,
+                  barTouchData: BarTouchData(enabled: true),
+                  titlesData: FlTitlesData(
+                    leftTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false)),
+                    rightTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false)),
+                    topTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false)),
+                    bottomTitles: AxisTitles(sideTitles: SideTitles(
+                      showTitles: true,
+                      getTitlesWidget: (v, _) {
+                        final i = v.toInt();
+                        if (i >= last7.length) return const SizedBox();
+                        final d = DateTime.parse(last7[i].date);
+                        return Text('${d.day}/${d.month}',
+                            style: const TextStyle(fontSize: 10));
+                      },
+                    )),
+                  ),
+                  gridData: const FlGridData(show: false),
+                  borderData: FlBorderData(show: false),
+                  barGroups: List.generate(last7.length, (i) {
+                    final pct = (last7[i].completionRate * 100);
+                    return BarChartGroupData(x: i, barRods: [
+                      BarChartRodData(
+                        toY: pct,
+                        color: pct >= 80 ? Colors.green
+                            : pct >= 50 ? AppTheme.primary : Colors.red.shade300,
+                        width: 28,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    ]);
+                  }),
+                )),
               ),
             ]),
           ),
@@ -607,7 +779,7 @@ class _TaskCard extends StatelessWidget {
   final String icon;
   final VoidCallback onComplete;
   const _TaskCard({required this.task, required this.color,
-      required this.icon, required this.onComplete});
+    required this.icon, required this.onComplete});
 
   @override
   Widget build(BuildContext context) {

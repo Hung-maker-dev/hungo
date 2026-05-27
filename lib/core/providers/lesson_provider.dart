@@ -4,41 +4,51 @@ import '../database/database_helper.dart';
 import '../models/models.dart';
 
 class LessonProvider extends ChangeNotifier {
-  List<LessonModel> _lessons = [];
+  // Tách riêng từng skill để không bị lẫn lộn
+  final Map<String, List<LessonModel>> _lessonsBySkill = {};
+  List<LessonModel> _currentLessons = [];
   List<QuestionModel> _questions = [];
   bool _isLoading = false;
-  String _filterSkill = '';
   String _filterLevel = '';
+  String _lastLoadedSkill = '';
 
-  List<LessonModel> get lessons => _lessons;
+  List<LessonModel> get lessons => _currentLessons;
   List<QuestionModel> get questions => _questions;
   bool get isLoading => _isLoading;
 
   List<LessonModel> get filtered {
-    return _lessons.where((l) {
-      final skillOk = _filterSkill.isEmpty || l.skill == _filterSkill;
-      final levelOk = _filterLevel.isEmpty || l.level == _filterLevel;
-      return skillOk && levelOk;
-    }).toList();
+    return _currentLessons.where((l) =>
+    _filterLevel.isEmpty || l.level == _filterLevel).toList();
   }
 
   void setFilter({String skill = '', String level = ''}) {
-    _filterSkill = skill;
     _filterLevel = level;
     notifyListeners();
   }
 
   Future<void> loadLessons({String? skill}) async {
     _isLoading = true;
+    if (skill != null) _lastLoadedSkill = skill;
     notifyListeners();
     final db = await DatabaseHelper.instance.database;
     final where = skill != null ? 'skill = ? AND is_published = 1' : 'is_published = 1';
-    final args = skill != null ? [skill] : null;
-    final rows = await db.query('lessons',
+    final args  = skill != null ? [skill] : null;
+    final rows  = await db.query('lessons',
         where: where, whereArgs: args, orderBy: 'created_at DESC');
-    _lessons = rows.map((r) => LessonModel.fromMap(r)).toList();
+    final loaded = rows.map((r) => LessonModel.fromMap(r)).toList();
+    if (skill != null) {
+      _lessonsBySkill[skill] = loaded;
+      _currentLessons = loaded;
+    } else {
+      _currentLessons = loaded;
+    }
     _isLoading = false;
     notifyListeners();
+  }
+
+  // Lấy lessons theo skill cụ thể (dùng cache nếu có)
+  List<LessonModel> getLessonsBySkill(String skill) {
+    return _lessonsBySkill[skill] ?? [];
   }
 
   Future<void> loadQuestions(int lessonId) async {

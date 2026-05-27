@@ -200,13 +200,67 @@ class _AdminLessonFormScreenState extends State<AdminLessonFormScreen> {
     padding: const EdgeInsets.only(bottom: 8),
     child: TextFormField(controller: opts[i],
     decoration: InputDecoration(
-    labelText: "Đáp án ${["A","B","C","D"][i]}")),
+    labelText: "${["A","B","C","D"][i]}. Nội dung đáp án",
+    prefixText: "${["A","B","C","D"][i]}.  ")),
     )),
+    const SizedBox(height: 8),
+    // Chọn đáp án đúng bằng A/B/C/D
+    const Text("Đáp án đúng:",
+    style: TextStyle(fontWeight: FontWeight.w500)),
+    const SizedBox(height: 6),
+    StatefulBuilder(builder: (_, ss2) {
+    String selected = aCtrl.text;
+    return Wrap(spacing: 8,
+    children: ["A","B","C","D"].map((letter) => ChoiceChip(
+    label: Text(letter,
+    style: const TextStyle(fontWeight: FontWeight.bold)),
+    selected: selected == letter,
+    selectedColor: AppTheme.primary,
+    labelStyle: TextStyle(
+    color: selected == letter ? Colors.white : null),
+    onSelected: (_) {
+    // Lưu NỘI DUNG đáp án tương ứng, không phải chữ cái
+    final idx = ["A","B","C","D"].indexOf(letter);
+    final content = opts[idx].text.trim();
+    if (content.isNotEmpty) {
+    aCtrl.text = content;
+    ss2(() => selected = letter);
+    }
+    },
+    )).toList(),
+    );
+    }),
+    const SizedBox(height: 4),
+    const Text("(Nhập nội dung đáp án trước rồi chọn đúng A/B/C/D)",
+    style: TextStyle(fontSize: 11, color: Colors.grey)),
     ],
+    if (type != "mcq")
     TextFormField(
     controller: aCtrl,
     decoration: const InputDecoration(labelText: "Đáp án đúng *"),
     validator: (v) => v!.isEmpty ? "Bắt buộc" : null,
+    ),
+    if (type == "mcq")
+    Container(
+    margin: const EdgeInsets.only(top: 8),
+    padding: const EdgeInsets.all(10),
+    decoration: BoxDecoration(
+    color: Colors.green.shade50,
+    borderRadius: BorderRadius.circular(8),
+    ),
+    child: Row(children: [
+    const Icon(Icons.check_circle_outlined,
+    color: Colors.green, size: 16),
+    const SizedBox(width: 6),
+    Expanded(child: Text(
+    aCtrl.text.isEmpty
+    ? "Chưa chọn đáp án đúng"
+        : "Đáp án đúng: ${aCtrl.text}",
+    style: TextStyle(fontSize: 12,
+    color: aCtrl.text.isEmpty
+    ? Colors.grey : Colors.green),
+    )),
+    ]),
     ),
     const SizedBox(height: 10),
     TextFormField(controller: expCtrl,
