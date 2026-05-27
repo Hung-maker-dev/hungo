@@ -1,6 +1,7 @@
 // lib/features/listening/listening_exercise_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import '../../core/providers/lesson_provider.dart';
 import '../../core/providers/progress_provider.dart';
@@ -16,10 +17,18 @@ class ListeningExerciseScreen extends StatefulWidget {
 }
 
 class _ListeningExerciseScreenState extends State<ListeningExerciseScreen> {
+  // ── Audio player (Firebase URL) ──────────────────────────────────────────
+  final _player = AudioPlayer();
+  // ── TTS fallback ─────────────────────────────────────────────────────────
   final _tts = FlutterTts();
-  bool _isPlaying = false;
+
+  PlayerState _playerState = PlayerState.stopped;
+  Duration _duration = Duration.zero;
+  Duration _position = Duration.zero;
   bool _hasListened = false;
   int _playCount = 0;
+  bool _showScript = false; // hiện script sau khi nộp bài
+
   final Map<int, TextEditingController> _ctrls = {};
   final Map<int, bool> _results = {};
   bool _submitted = false;
@@ -27,37 +36,96 @@ class _ListeningExerciseScreenState extends State<ListeningExerciseScreen> {
   final _startTime = DateTime.now();
 
   LessonModel get _lesson => widget.lesson as LessonModel;
+  bool get _hasRealAudio => _lesson.audioUrl != null && _lesson.audioUrl!.isNotEmpty;
 
   @override
   void initState() {
     super.initState();
-    _tts.setLanguage('en-US');
-    _tts.setSpeechRate(0.42);
-    _tts.setPitch(1.0);
-    _tts.setCompletionHandler(() => setState(() => _isPlaying = false));
+    _initAudio();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<LessonProvider>().loadQuestions(_lesson.id!);
     });
   }
 
+  Future<void> _initAudio() async {
+    if (_hasRealAudio) {
+      // Lắng nghe trạng thái player
+      _player.onPlayerStateChanged.listen((s) {
+        if (mounted) setState(() => _playerState = s);
+      });
+      _player.onDurationChanged.listen((d) {
+        if (mounted) setState(() => _duration = d);
+      });
+      _player.onPositionChanged.listen((p) {
+        if (mounted) setState(() => _position = p);
+      });
+      _player.onPlayerComplete.listen((_) {
+        if (mounted) setState(() { _playerState = PlayerState.stopped; _position = Duration.zero; });
+      });
+    } else {
+      // TTS fallback
+      await _tts.setLanguage('en-US');
+      await _tts.setSpeechRate(0.42);
+      _tts.setCompletionHandler(() {
+        if (mounted) setState(() => _playerState = PlayerState.stopped);
+      });
+    }
+  }
+
   @override
   void dispose() {
+    _player.dispose();
     _tts.stop();
     for (final c in _ctrls.values) c.dispose();
     super.dispose();
   }
 
-  Future<void> _play() async {
-    if (_isPlaying) {
-      await _tts.stop();
-      setState(() => _isPlaying = false);
-      return;
+  // ── Play / Pause / Stop ──────────────────────────────────────────────────
+  Future<void> _togglePlay() async {
+    if (_hasRealAudio) {
+      if (_playerState == PlayerState.playing) {
+        await _player.pause();
+      } else {
+        setState(() { _hasListened = true; _playCount++; });
+        if (_playerState == PlayerState.paused) {
+          await _player.resume();
+        } else {
+          await _player.play(UrlSource(_lesson.audioUrl!));
+        }
+      }
+    } else {
+      // TTS fallback
+      if (_playerState == PlayerState.playing) {
+        await _tts.stop();
+        setState(() => _playerState = PlayerState.stopped);
+      } else {
+        setState(() { _playerState = PlayerState.playing; _hasListened = true; _playCount++; });
+        await _tts.speak(_lesson.content ?? _lesson.title);
+      }
     }
-    final text = _lesson.content ?? _lesson.title;
-    setState(() { _isPlaying = true; _hasListened = true; _playCount++; });
-    await _tts.speak(text);
   }
 
+  Future<void> _rewind() async {
+    if (_hasRealAudio) {
+      final newPos = _position - const Duration(seconds: 10);
+      await _player.seek(newPos < Duration.zero ? Duration.zero : newPos);
+    }
+  }
+
+  Future<void> _forward() async {
+    if (_hasRealAudio) {
+      final newPos = _position + const Duration(seconds: 10);
+      await _player.seek(newPos > _duration ? _duration : newPos);
+    }
+  }
+
+  String _fmtDuration(Duration d) {
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  // ── Nộp bài ──────────────────────────────────────────────────────────────
   void _submit(List<QuestionModel> questions) {
     int s = 0;
     final results = <int, bool>{};
@@ -68,23 +136,19 @@ class _ListeningExerciseScreenState extends State<ListeningExerciseScreen> {
       results[i] = ok;
       if (ok) s += questions[i].points;
     }
-
-    setState(() { _results.addAll(results); _score = s; _submitted = true; });
+    setState(() { _results.addAll(results); _score = s; _submitted = true; _showScript = true; });
 
     final auth = context.read<AuthProvider>();
     final prog = context.read<ProgressProvider>();
     final maxScore = questions.fold<int>(0, (a, q) => a + q.points);
     final secs = DateTime.now().difference(_startTime).inSeconds;
     if (auth.isLoggedIn) {
-      prog.saveProgress(
-        skill: 'listening', lessonId: _lesson.id,
-        score: s, maxScore: maxScore, timeSpent: secs,
-      );
+      prog.saveProgress(skill: 'listening', lessonId: _lesson.id,
+          score: s, maxScore: maxScore, timeSpent: secs);
     }
 
     showDialog(
-      context: context,
-      barrierDismissible: false,
+      context: context, barrierDismissible: false,
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Kết quả', textAlign: TextAlign.center),
@@ -95,7 +159,7 @@ class _ListeningExerciseScreenState extends State<ListeningExerciseScreen> {
           const SizedBox(height: 8),
           Text('${results.values.where((v) => v).length}/${questions.length} câu đúng'),
           const SizedBox(height: 4),
-          Text('Nghe ${_playCount} lần · ${secs}s',
+          Text('Nghe $_playCount lần · ${secs}s',
               style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
         ]),
         actions: [
@@ -106,7 +170,7 @@ class _ListeningExerciseScreenState extends State<ListeningExerciseScreen> {
               Navigator.pop(context);
               setState(() {
                 _submitted = false; _score = 0; _results.clear();
-                _hasListened = false; _playCount = 0;
+                _hasListened = false; _playCount = 0; _showScript = false;
                 for (final c in _ctrls.values) c.clear();
               });
             },
@@ -121,11 +185,11 @@ class _ListeningExerciseScreenState extends State<ListeningExerciseScreen> {
   Widget build(BuildContext context) {
     final lp = context.watch<LessonProvider>();
     final questions = lp.questions;
-
-    // Khởi tạo controllers
     for (int i = 0; i < questions.length; i++) {
       _ctrls.putIfAbsent(i, () => TextEditingController());
     }
+
+    final isPlaying = _playerState == PlayerState.playing;
 
     return Scaffold(
       appBar: AppBar(
@@ -137,60 +201,152 @@ class _ListeningExerciseScreenState extends State<ListeningExerciseScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Audio player card ──────────────────────────────────────────
+
+            // ── AUDIO PLAYER CARD ─────────────────────────────────────────
             Card(
-              elevation: 4,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              elevation: 6,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(22),
                   gradient: const LinearGradient(
                     colors: [AppTheme.skillListening, Color(0xFFBF360C)],
                     begin: Alignment.topLeft, end: Alignment.bottomRight,
                   ),
                 ),
                 child: Column(children: [
-                  const Icon(Icons.headphones_rounded, color: Colors.white, size: 48),
-                  const SizedBox(height: 12),
+                  const Icon(Icons.headphones_rounded, color: Colors.white, size: 44),
+                  const SizedBox(height: 10),
                   Text(_lesson.title,
                       style: const TextStyle(color: Colors.white, fontSize: 16,
                           fontWeight: FontWeight.bold),
                       textAlign: TextAlign.center),
                   const SizedBox(height: 4),
-                  Text('Đã nghe: $_playCount lần',
-                      style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                  const SizedBox(height: 20),
-
-                  // Play button
-                  GestureDetector(
-                    onTap: _play,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      width: 70, height: 70,
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: _isPlaying ? Colors.red : Colors.white,
-                        shape: BoxShape.circle,
-                        boxShadow: [BoxShadow(
-                          color: Colors.black26, blurRadius: 12, offset: const Offset(0, 4),
-                        )],
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      child: Icon(
-                        _isPlaying ? Icons.stop_rounded : Icons.play_arrow_rounded,
-                        color: _isPlaying ? Colors.white : AppTheme.skillListening,
-                        size: 40,
+                      child: Text(
+                        _hasRealAudio ? '🎵 Audio file' : '🔊 TTS',
+                        style: const TextStyle(color: Colors.white70, fontSize: 11),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(_isPlaying ? 'Đang phát...' : 'Nhấn để nghe',
-                      style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                    const SizedBox(width: 8),
+                    Text('Đã nghe: $_playCount lần',
+                        style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                  ]),
+                  const SizedBox(height: 16),
+
+                  // ── Progress bar (chỉ khi có audio thật) ────────────────
+                  if (_hasRealAudio && _duration > Duration.zero) ...[
+                    SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        activeTrackColor: Colors.white,
+                        inactiveTrackColor: Colors.white30,
+                        thumbColor: Colors.white,
+                        overlayColor: Colors.white24,
+                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                        trackHeight: 3,
+                      ),
+                      child: Slider(
+                        value: _position.inSeconds.toDouble(),
+                        max: _duration.inSeconds.toDouble(),
+                        onChanged: (v) => _player.seek(Duration(seconds: v.toInt())),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(_fmtDuration(_position),
+                              style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                          Text(_fmtDuration(_duration),
+                              style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+
+                  // ── Controls ─────────────────────────────────────────────
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    if (_hasRealAudio) ...[
+                      IconButton(
+                        onPressed: _rewind,
+                        icon: const Icon(Icons.replay_10_rounded,
+                            color: Colors.white70, size: 32),
+                        tooltip: '-10s',
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+
+                    // Play/Pause button
+                    GestureDetector(
+                      onTap: _togglePlay,
+                      child: Container(
+                        width: 68, height: 68,
+                        decoration: BoxDecoration(
+                          color: isPlaying ? Colors.red : Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [BoxShadow(
+                              color: Colors.black26, blurRadius: 10,
+                              offset: const Offset(0, 4))],
+                        ),
+                        child: Icon(
+                          isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                          color: isPlaying ? Colors.white : AppTheme.skillListening,
+                          size: 40,
+                        ),
+                      ),
+                    ),
+
+                    if (_hasRealAudio) ...[
+                      const SizedBox(width: 8),
+                      IconButton(
+                        onPressed: _forward,
+                        icon: const Icon(Icons.forward_10_rounded,
+                            color: Colors.white70, size: 32),
+                        tooltip: '+10s',
+                      ),
+                    ],
+                  ]),
+                  const SizedBox(height: 8),
+                  Text(isPlaying ? '▶ Đang phát...' : 'Nhấn để nghe',
+                      style: const TextStyle(color: Colors.white60, fontSize: 13)),
                 ]),
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
 
+            // ── SCRIPT (hiện sau khi nộp bài) ─────────────────────────────
+            if (_showScript && _lesson.content != null && _lesson.content!.isNotEmpty) ...[
+              Card(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Row(children: [
+                      Icon(Icons.article_outlined, color: AppTheme.skillListening),
+                      SizedBox(width: 8),
+                      Text('Script bài nghe',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                    ]),
+                    const Divider(height: 16),
+                    Text(_lesson.content!,
+                        style: const TextStyle(fontSize: 14, height: 1.7)),
+                  ]),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+
+            // ── CHƯA NGHE ─────────────────────────────────────────────────
             if (!_hasListened)
               Container(
                 padding: const EdgeInsets.all(14),
@@ -206,11 +362,12 @@ class _ListeningExerciseScreenState extends State<ListeningExerciseScreen> {
                 ]),
               ),
 
+            // ── CÂU HỎI ──────────────────────────────────────────────────
             if (_hasListened && questions.isNotEmpty) ...[
               const SizedBox(height: 16),
               Text('Câu hỏi (${questions.length} câu)',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold)),
+                  style: Theme.of(context).textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
 
               ...List.generate(questions.length, (i) {
@@ -224,8 +381,9 @@ class _ListeningExerciseScreenState extends State<ListeningExerciseScreen> {
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('Câu ${i + 1}: ${q.questionText}',
-                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15, height: 1.5)),
+                      Text('Câu ${i+1}: ${q.questionText}',
+                          style: const TextStyle(fontWeight: FontWeight.w600,
+                              fontSize: 15, height: 1.5)),
                       const SizedBox(height: 12),
 
                       // MCQ
@@ -272,9 +430,9 @@ class _ListeningExerciseScreenState extends State<ListeningExerciseScreen> {
                             prefixIcon: const Icon(Icons.edit_outlined),
                             suffixIcon: _submitted
                                 ? Icon(result == true
-                                    ? Icons.check_circle_rounded
-                                    : Icons.cancel_rounded,
-                                    color: result == true ? Colors.green : Colors.red)
+                                ? Icons.check_circle_rounded
+                                : Icons.cancel_rounded,
+                                color: result == true ? Colors.green : Colors.red)
                                 : null,
                           ),
                         ),
@@ -309,7 +467,8 @@ class _ListeningExerciseScreenState extends State<ListeningExerciseScreen> {
                     onPressed: _ctrls.values.every((c) => c.text.isNotEmpty)
                         ? () => _submit(questions) : null,
                     style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.skillListening),
+                        backgroundColor: AppTheme.skillListening,
+                        padding: const EdgeInsets.symmetric(vertical: 16)),
                     child: const Text('Nộp bài'),
                   ),
                 ),

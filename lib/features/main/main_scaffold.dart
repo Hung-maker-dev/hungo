@@ -8,6 +8,7 @@ import '../grammar/grammar_list_screen.dart';
 import '../reading/reading_list_screen.dart';
 import '../listening/listening_list_screen.dart';
 import '../profile/profile_screen.dart';
+import '../roadmap/roadmap_screen.dart';
 
 class MainScaffold extends StatefulWidget {
   const MainScaffold({super.key});
@@ -21,13 +22,14 @@ class _MainScaffoldState extends State<MainScaffold> {
   static const _tabs = [
     _TabItem(Icons.search_rounded, Icons.search_rounded, 'Từ vựng'),
     _TabItem(Icons.edit_note_rounded, Icons.edit_note_rounded, 'Ngữ pháp'),
+    _TabItem(Icons.route_outlined, Icons.route_rounded, 'Lộ trình'),
     _TabItem(Icons.chrome_reader_mode_outlined, Icons.chrome_reader_mode_rounded, 'Đọc'),
     _TabItem(Icons.headphones_outlined, Icons.headphones_rounded, 'Nghe'),
     _TabItem(Icons.person_outline_rounded, Icons.person_rounded, 'Hồ sơ'),
   ];
 
   // Tab yêu cầu login
-  static const _requireLogin = {1, 2, 3};
+  static const _requireLogin = {1, 2, 3, 4, 5};
 
   void _onTap(int i, BuildContext ctx) {
     if (_requireLogin.contains(i)) {
@@ -72,11 +74,12 @@ class _MainScaffoldState extends State<MainScaffold> {
       body: IndexedStack(
         index: _idx,
         children: const [
-          SearchScreen(),
-          GrammarListScreen(),
-          ReadingListScreen(),
-          ListeningListScreen(),
-          ProfileScreen(),
+          SearchScreen(),        // 0
+          GrammarListScreen(),   // 1
+          RoadmapScreen(),       // 2
+          ReadingListScreen(),   // 3
+          ListeningListScreen(), // 4
+          ProfileScreen(),       // 5
         ],
       ),
       bottomNavigationBar: NavigationBar(
@@ -96,11 +99,11 @@ class _MainScaffoldState extends State<MainScaffold> {
       // FAB chỉ hiện ở tab Flashcard
       floatingActionButton: _idx == 0
           ? FloatingActionButton.extended(
-              onPressed: () => Navigator.pushNamed(context, '/vocab/flashcard'),
-              icon: const Icon(Icons.style_rounded),
-              label: const Text('Bộ thẻ'),
-              backgroundColor: AppTheme.primary,
-            )
+        onPressed: () => Navigator.pushNamed(context, '/vocab/flashcard'),
+        icon: const Icon(Icons.style_rounded),
+        label: const Text('Bộ thẻ'),
+        backgroundColor: AppTheme.primary,
+      )
           : null,
     );
   }

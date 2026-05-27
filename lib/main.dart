@@ -9,8 +9,11 @@ import 'core/providers/grammar_provider.dart';
 import 'core/providers/lesson_provider.dart';
 import 'core/providers/progress_provider.dart';
 import 'core/providers/theme_provider.dart';
+import 'core/providers/roadmap_provider.dart';
 import 'core/theme/app_theme.dart';
 import 'core/database/database_helper.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 
 import 'features/splash/splash_screen.dart';
 import 'features/auth/login_screen.dart';
@@ -33,6 +36,8 @@ import 'features/admin/admin_dashboard_screen.dart';
 import 'features/admin/admin_lesson_form_screen.dart';
 import 'features/admin/admin_vocab_form_screen.dart';
 import 'features/admin/admin_user_list_screen.dart';
+import 'features/roadmap/roadmap_screen.dart';
+import 'features/roadmap/roadmap_setup_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -41,7 +46,11 @@ void main() async {
     DeviceOrientation.landscapeLeft,
     DeviceOrientation.landscapeRight,
   ]);
-  await DatabaseHelper.instance.database;
+  // Chạy song song để không block UI
+  await Future.wait([
+    Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform),
+    DatabaseHelper.instance.database,
+  ]);
   runApp(const EnglishApp());
 }
 
@@ -57,6 +66,10 @@ class EnglishApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => VocabularyProvider()),
         ChangeNotifierProvider(create: (_) => GrammarProvider()),
         ChangeNotifierProvider(create: (_) => LessonProvider()),
+        ChangeNotifierProxyProvider<AuthProvider, RoadmapProvider>(
+          create: (_) => RoadmapProvider(),
+          update: (_, auth, prev) => prev!,
+        ),
         ChangeNotifierProxyProvider<AuthProvider, ProgressProvider>(
           create: (_) => ProgressProvider(),
           update: (_, auth, prev) => prev!..onAuthChanged(auth.currentUser?.id),
@@ -64,7 +77,7 @@ class EnglishApp extends StatelessWidget {
       ],
       child: Consumer<ThemeProvider>(
         builder: (_, tp, __) => MaterialApp(
-          title: 'Hungo',
+          title: 'EnglishMate',
           debugShowCheckedModeBanner: false,
           theme: AppTheme.light,
           darkTheme: AppTheme.dark,
@@ -107,6 +120,8 @@ class EnglishApp extends StatelessWidget {
         page = AdminLessonFormScreen(lesson: s.arguments); break;
       case '/admin/vocab':     page = const AdminVocabFormScreen(); break;
       case '/admin/users':     page = const AdminUserListScreen(); break;
+      case '/roadmap':         page = const RoadmapScreen(); break;
+      case '/roadmap/setup':   page = const RoadmapSetupScreen(); break;
       default:
         page = Scaffold(body: Center(child: Text('404: \${s.name}')));
     }
