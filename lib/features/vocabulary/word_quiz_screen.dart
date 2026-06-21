@@ -148,7 +148,8 @@ class _WordQuizScreenState extends State<WordQuizScreen> {
           ),
         ),
       ),
-      body: Padding(
+      // ── SingleChildScrollView ngăn overflow khi đáp án có text dài ──
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -229,8 +230,7 @@ class _WordQuizScreenState extends State<WordQuizScreen> {
                 ),
               );
             }),
-
-            const Spacer(),
+            const SizedBox(height: 16),
             if (_answered)
               SizedBox(
                 width: double.infinity,
@@ -239,6 +239,7 @@ class _WordQuizScreenState extends State<WordQuizScreen> {
                   child: Text(_idx < _questions.length - 1 ? 'Câu tiếp theo →' : 'Xem kết quả'),
                 ),
               ),
+            const SizedBox(height: 8),
           ],
         ),
       ),

@@ -302,4 +302,33 @@ class VocabularyProvider extends ChangeNotifier {
     _searchQuery = '';
     notifyListeners();
   }
+  // ── Từ ngẫu nhiên ─────────────────────────────────────────────────────────
+  List<VocabularyModel> _randomWords = [];
+  List<VocabularyModel> get randomWords => _randomWords;
+
+  bool get isLoading => _isSearching;
+  VocabularyModel? get searchResult =>
+      _searchResults.isNotEmpty ? _searchResults.first : null;
+  String? get errorMessage => _error;
+
+  Future<void> loadRandomWords({int count = 10}) async {
+    _isSearching = true;
+    notifyListeners();
+    try {
+      final db = await DatabaseHelper.instance.database;
+      final rows = await db.query('vocabulary',
+          orderBy: 'RANDOM()', limit: count);
+      _randomWords = rows.map((r) => VocabularyModel.fromMap(r)).toList();
+    } finally {
+      _isSearching = false;
+      notifyListeners();
+    }
+  }
+
+  void clearResult() {
+    _searchResults.clear();
+    _error = null;
+    notifyListeners();
+  }
+
 }

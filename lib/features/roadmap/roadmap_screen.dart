@@ -20,11 +20,13 @@ class _RoadmapScreenState extends State<RoadmapScreen>
   @override
   void initState() {
     super.initState();
-    _tab = TabController(length: 3, vsync: this);
+    _tab = TabController(length: 4, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final auth = context.read<AuthProvider>();
       if (auth.isLoggedIn) {
-        context.read<RoadmapProvider>().loadActiveRoadmap(auth.currentUser!.id!);
+        final rp = context.read<RoadmapProvider>();
+        rp.loadActiveRoadmap(auth.currentUser!.id!);
+        rp.loadAllRoadmaps(auth.currentUser!.id!);
       }
     });
   }
@@ -81,6 +83,7 @@ class _RoadmapScreenState extends State<RoadmapScreen>
             Tab(text: 'Hôm nay'),
             Tab(text: 'Tiến độ'),
             Tab(text: 'Thống kê'),
+            Tab(text: 'Lịch sử'),
           ],
         ),
       ),
@@ -90,6 +93,7 @@ class _RoadmapScreenState extends State<RoadmapScreen>
           _TodayTab(rp: rp),
           _ProgressTab(rp: rp),
           _StatsTab(rp: rp),
+          _HistoryTab(rp: rp, auth: auth),
         ],
       ),
     );
@@ -415,9 +419,9 @@ class _RandomVocabWidgetState extends State<_RandomVocabWidget> {
     width: double.infinity,
     padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
-      color: AppTheme.primary.withOpacity(0.05),
+      color: AppTheme.primary.withValues(alpha: 0.05),
       borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: AppTheme.primary.withOpacity(0.3)),
+      border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
     ),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(_word!['definition'] ?? '',
@@ -624,8 +628,8 @@ class _StatsTab extends StatelessWidget {
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(20),
-              color: evalColor.withOpacity(0.08),
-              border: Border.all(color: evalColor.withOpacity(0.4)),
+              color: evalColor.withValues(alpha: 0.08),
+              border: Border.all(color: evalColor.withValues(alpha: 0.4)),
             ),
             padding: const EdgeInsets.all(20),
             child: Column(children: [
@@ -728,6 +732,182 @@ class _StatsTab extends StatelessWidget {
   }
 }
 
+
+// ── Tab Lịch sử lộ trình ─────────────────────────────────────────────────────
+
+class _HistoryTab extends StatelessWidget {
+  final RoadmapProvider rp;
+  final AuthProvider auth;
+  const _HistoryTab({required this.rp, required this.auth});
+
+  String _statusLabel(String status) {
+    switch (status) {
+      case 'active':    return '🟢 Đang học';
+      case 'paused':    return '⏸️ Tạm dừng';
+      case 'completed': return '✅ Hoàn thành';
+      default:          return status;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final all = rp.allRoadmaps;
+    if (all.isEmpty) {
+      return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.history_rounded, size: 64, color: Colors.grey.shade300),
+        const SizedBox(height: 12),
+        const Text('Chưa có lộ trình nào', style: TextStyle(fontSize: 15)),
+        const SizedBox(height: 8),
+        ElevatedButton.icon(
+          onPressed: () => Navigator.pushNamed(context, '/roadmap/setup'),
+          icon: const Icon(Icons.add_rounded),
+          label: const Text('Tạo lộ trình đầu tiên'),
+        ),
+      ]));
+    }
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Text('Tổng: ${all.length} lộ trình',
+              style: const TextStyle(fontWeight: FontWeight.w600)),
+          TextButton.icon(
+            onPressed: () => Navigator.pushNamed(context, '/roadmap/setup'),
+            icon: const Icon(Icons.add_rounded, size: 18),
+            label: const Text('Tạo mới'),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        ...all.map((rm) => Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Expanded(child: Text(rm.goal,
+                    style: const TextStyle(fontWeight: FontWeight.bold,
+                        fontSize: 15),
+                    maxLines: 2)),
+                if (rm.status != 'active')
+                  TextButton(
+                    child: const Text('Kích hoạt'),
+                    onPressed: () async {
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (_) => AlertDialog(
+                          title: const Text('Chuyển lộ trình?'),
+                          content: const Text('Lộ trình hiện tại sẽ bị tạm dừng.'),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(context, false),
+                                child: const Text('Hủy')),
+                            ElevatedButton(onPressed: () => Navigator.pop(context, true),
+                                child: const Text('Xác nhận')),
+                          ],
+                        ),
+                      );
+                      if (confirmed == true && context.mounted) {
+                        await rp.switchToRoadmap(rm.id!, auth.currentUser!.id!);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                              content: Text('Đã chuyển sang lộ trình này!'),
+                              backgroundColor: Colors.green));
+                        }
+                      }
+                    },
+                  ),
+                IconButton(
+                  icon: Icon(Icons.delete_outline_rounded,
+                      color: Colors.red.shade400, size: 20),
+                  onPressed: () async {
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (_) => AlertDialog(
+                        title: const Text('Xóa lộ trình?'),
+                        content: const Text('Tất cả nhiệm vụ của lộ trình này sẽ bị xóa.'),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(context, false),
+                              child: const Text('Hủy')),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red,
+                                foregroundColor: Colors.white),
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text('Xóa'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (ok == true && context.mounted) {
+                      await rp.deleteRoadmap(rm.id!, auth.currentUser!.id!);
+                    }
+                  },
+                ),
+              ]),
+              const SizedBox(height: 6),
+              Text(_statusLabel(rm.status),
+                  style: TextStyle(fontSize: 12,
+                      color: rm.status == 'active' ? Colors.green : Colors.grey)),
+              const SizedBox(height: 4),
+              Row(children: [
+                Icon(Icons.calendar_today_rounded,
+                    size: 12, color: Colors.grey.shade500),
+                const SizedBox(width: 4),
+                Text('${rm.startDate} → ${rm.endDate}',
+                    style: TextStyle(fontSize: 11,
+                        color: Colors.grey.shade500)),
+              ]),
+              const SizedBox(height: 8),
+              Row(children: [
+                _StatPill(Icons.access_time_rounded,
+                    '${rm.durationWeeks} tuần', Colors.blue),
+                const SizedBox(width: 8),
+                _StatPill(Icons.timer_outlined,
+                    '${rm.dailyMinutes} phút/ngày', Colors.orange),
+                const SizedBox(width: 8),
+                _StatPill(Icons.trending_up_rounded,
+                    '${rm.levelStart}', Colors.green),
+              ]),
+              const SizedBox(height: 8),
+              LinearProgressIndicator(
+                value: rm.overallProgress.clamp(0.0, 1.0),
+                borderRadius: BorderRadius.circular(4),
+                backgroundColor: Colors.grey.shade200,
+                color: rm.status == 'active'
+                    ? AppTheme.primary : Colors.grey,
+              ),
+              const SizedBox(height: 4),
+              Text('${(rm.overallProgress * 100).toStringAsFixed(0)}% hoàn thành · ${rm.daysLeft} ngày còn lại',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+            ]),
+          ),
+        )),
+      ],
+    );
+  }
+}
+
+class _StatPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  const _StatPill(this.icon, this.label, this.color);
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.1),
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 12, color: color),
+      const SizedBox(width: 4),
+      Text(label, style: TextStyle(fontSize: 11, color: color,
+          fontWeight: FontWeight.w500)),
+    ]),
+  );
+}
+
 // ── Màn hình chưa có lộ trình ─────────────────────────────────────────────────
 class _NoRoadmapView extends StatelessWidget {
   @override
@@ -741,7 +921,7 @@ class _NoRoadmapView extends StatelessWidget {
             Container(
               width: 100, height: 100,
               decoration: BoxDecoration(
-                color: AppTheme.primary.withOpacity(0.1),
+                color: AppTheme.primary.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.route_rounded,
@@ -792,8 +972,8 @@ class _TaskCard extends StatelessWidget {
           Container(
             width: 44, height: 44,
             decoration: BoxDecoration(
-              color: task.isCompleted ? Colors.green.withOpacity(0.12)
-                  : color.withOpacity(0.12),
+              color: task.isCompleted ? Colors.green.withValues(alpha: 0.12)
+                  : color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Center(child: Text(

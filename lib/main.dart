@@ -10,6 +10,7 @@ import 'core/providers/lesson_provider.dart';
 import 'core/providers/progress_provider.dart';
 import 'core/providers/theme_provider.dart';
 import 'core/providers/roadmap_provider.dart';
+import 'core/providers/submission_provider.dart';
 import 'core/theme/app_theme.dart';
 import 'core/database/database_helper.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -19,7 +20,6 @@ import 'features/splash/splash_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/register_screen.dart';
 import 'features/main/main_scaffold.dart';
-import 'features/vocabulary/search_screen.dart';
 import 'features/vocabulary/flashcard_screen.dart';
 import 'features/vocabulary/saved_words_screen.dart';
 import 'features/vocabulary/word_quiz_screen.dart';
@@ -40,7 +40,9 @@ import 'features/roadmap/roadmap_screen.dart';
 import 'features/roadmap/roadmap_setup_screen.dart';
 import 'features/writing/writing_list_screen.dart';
 import 'features/writing/writing_exercise_screen.dart';
+import 'features/writing/my_submissions_screen.dart';
 import 'features/admin/admin_lesson_list_screen.dart';
+import 'features/admin/admin_grading_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -49,11 +51,15 @@ void main() async {
     DeviceOrientation.landscapeLeft,
     DeviceOrientation.landscapeRight,
   ]);
-  // Chạy song song để không block UI
-  await Future.wait([
-    Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform),
-    DatabaseHelper.instance.database,
-  ]);
+
+  // Khởi tạo DB trước
+  await DatabaseHelper.instance.database;
+
+  // Firebase không block nếu lỗi
+  try {
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  } catch (_) {}
+
   runApp(const EnglishApp());
 }
 
@@ -68,7 +74,8 @@ class EnglishApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AuthProvider()..tryAutoLogin()),
         ChangeNotifierProvider(create: (_) => VocabularyProvider()),
         ChangeNotifierProvider(create: (_) => GrammarProvider()),
-        ChangeNotifierProvider(create: (_) => LessonProvider()),
+        // LessonProvider tự load ngay khi tạo
+        ChangeNotifierProvider(create: (_) => LessonProvider()..loadAll()),
         ChangeNotifierProxyProvider<AuthProvider, RoadmapProvider>(
           create: (_) => RoadmapProvider(),
           update: (_, auth, prev) => prev!,
@@ -77,67 +84,58 @@ class EnglishApp extends StatelessWidget {
           create: (_) => ProgressProvider(),
           update: (_, auth, prev) => prev!..onAuthChanged(auth.currentUser?.id),
         ),
+        ChangeNotifierProvider(create: (_) => SubmissionProvider()),
       ],
       child: Consumer<ThemeProvider>(
         builder: (_, tp, __) => MaterialApp(
-          title: 'EnglishMate',
+          title: 'Hungo English',
           debugShowCheckedModeBanner: false,
           theme: AppTheme.light,
           darkTheme: AppTheme.dark,
           themeMode: tp.themeMode,
-          initialRoute: '/',
-          onGenerateRoute: _route,
+          initialRoute: '/splash',
+          routes: {
+            '/splash':            (_) => const SplashScreen(),
+            '/login':             (_) => const LoginScreen(),
+            '/register':          (_) => const RegisterScreen(),
+            '/home':              (_) => const MainScaffold(),
+            '/vocab/flashcard':   (_) => const FlashcardScreen(),
+            '/vocab/saved':       (_) => const SavedWordsScreen(),
+            '/vocab/quiz':        (_) => const WordQuizScreen(),
+            '/grammar':           (_) => const GrammarListScreen(),
+            '/grammar/detail':    (c) => GrammarDetailScreen(
+                topic: ModalRoute.of(c)!.settings.arguments as dynamic),
+            '/grammar/exercise':  (c) {
+              final args = ModalRoute.of(c)!.settings.arguments as Map;
+              return GrammarExerciseScreen(
+                grammarTopic: args['grammarTopic'] as String,
+                grammarName: args['grammarName'] as String,
+              );
+            },
+            '/reading':           (_) => const ReadingListScreen(),
+            '/reading/detail':    (c) => ReadingDetailScreen(
+                lesson: ModalRoute.of(c)!.settings.arguments as dynamic),
+            '/listening':         (_) => const ListeningListScreen(),
+            '/listening/exercise':(c) => ListeningExerciseScreen(
+                lesson: ModalRoute.of(c)!.settings.arguments as dynamic),
+            '/writing':           (_) => const WritingListScreen(),
+            '/writing/exercise':  (c) => WritingExerciseScreen(
+                lesson: ModalRoute.of(c)!.settings.arguments as dynamic),
+            '/profile':           (_) => const ProfileScreen(),
+            '/settings':          (_) => const SettingsScreen(),
+            '/roadmap':           (_) => const RoadmapScreen(),
+            '/roadmap/setup':     (_) => const RoadmapSetupScreen(),
+            '/admin':             (_) => const AdminDashboardScreen(),
+            '/admin/lesson':      (c) => AdminLessonFormScreen(
+                lesson: ModalRoute.of(c)!.settings.arguments),
+            '/admin/vocab':       (_) => const AdminVocabFormScreen(),
+            '/admin/users':       (_) => const AdminUserListScreen(),
+            '/admin/lessons':     (_) => const AdminLessonListScreen(),
+            '/my-submissions':  (_) => const MySubmissionsScreen(),
+            '/admin/grading':   (_) => const AdminGradingScreen(),
+          },
         ),
       ),
-    );
-  }
-
-  static Route<dynamic> _route(RouteSettings s) {
-    Widget page;
-    switch (s.name) {
-      case '/':           page = const SplashScreen(); break;
-      case '/login':      page = const LoginScreen(); break;
-      case '/register':   page = const RegisterScreen(); break;
-      case '/home':       page = const MainScaffold(); break;
-      case '/vocab/search':    page = const SearchScreen(); break;
-      case '/vocab/flashcard': page = const FlashcardScreen(); break;
-      case '/vocab/saved':     page = const SavedWordsScreen(); break;
-      case '/vocab/quiz':      page = const WordQuizScreen(); break;
-      case '/grammar':         page = const GrammarListScreen(); break;
-      case '/grammar/detail':
-        page = GrammarDetailScreen(topic: s.arguments); break;
-      case '/grammar/exercise':
-        final a = s.arguments as Map<String, dynamic>;
-        page = GrammarExerciseScreen(grammarId: a['grammarId'], grammarName: a['grammarName']);
-        break;
-      case '/reading':         page = const ReadingListScreen(); break;
-      case '/reading/detail':
-        page = ReadingDetailScreen(lesson: s.arguments); break;
-      case '/listening':       page = const ListeningListScreen(); break;
-      case '/listening/exercise':
-        page = ListeningExerciseScreen(lesson: s.arguments); break;
-      case '/profile':         page = const ProfileScreen(); break;
-      case '/settings':        page = const SettingsScreen(); break;
-      case '/admin':           page = const AdminDashboardScreen(); break;
-      case '/admin/lesson':
-        page = AdminLessonFormScreen(lesson: s.arguments); break;
-      case '/admin/vocab':     page = const AdminVocabFormScreen(); break;
-      case '/admin/users':     page = const AdminUserListScreen(); break;
-      case '/roadmap':         page = const RoadmapScreen(); break;
-      case '/roadmap/setup':   page = const RoadmapSetupScreen(); break;
-      case '/writing':         page = const WritingListScreen(); break;
-      case '/writing/exercise':
-        page = WritingExerciseScreen(lesson: s.arguments); break;
-      case '/admin/lessons':   page = const AdminLessonListScreen(); break;
-      default:
-        page = Scaffold(body: Center(child: Text('404: \${s.name}')));
-    }
-    return PageRouteBuilder(
-      settings: s,
-      pageBuilder: (_, a, __) => page,
-      transitionsBuilder: (_, a, __, child) =>
-          FadeTransition(opacity: CurvedAnimation(parent: a, curve: Curves.easeIn), child: child),
-      transitionDuration: const Duration(milliseconds: 250),
     );
   }
 }

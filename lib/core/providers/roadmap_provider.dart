@@ -436,4 +436,40 @@ class RoadmapProvider extends ChangeNotifier {
     }
     return 8; // communication
   }
+  // ── Load tất cả lộ trình (kể cả paused/completed) ─────────────────────────
+  List<RoadmapModel> _allRoadmaps = [];
+  List<RoadmapModel> get allRoadmaps => _allRoadmaps;
+
+  Future<void> loadAllRoadmaps(int userId) async {
+    await _ensureTables();
+    final db = await DatabaseHelper.instance.database;
+    final rows = await db.query('roadmaps',
+        where: 'user_id = ?', whereArgs: [userId],
+        orderBy: 'created_at DESC');
+    _allRoadmaps = rows.map((r) => RoadmapModel.fromMap(r)).toList();
+    notifyListeners();
+  }
+
+  Future<void> switchToRoadmap(int roadmapId, int userId) async {
+    await _ensureTables();
+    final db = await DatabaseHelper.instance.database;
+    await db.update('roadmaps', {'status': 'paused'},
+        where: 'user_id = ?', whereArgs: [userId]);
+    await db.update('roadmaps', {'status': 'active'},
+        where: 'id = ?', whereArgs: [roadmapId]);
+    await loadActiveRoadmap(userId);
+    await loadAllRoadmaps(userId);
+  }
+
+  Future<void> deleteRoadmap(int roadmapId, int userId) async {
+    final db = await DatabaseHelper.instance.database;
+    await db.delete('roadmaps', where: 'id = ?', whereArgs: [roadmapId]);
+    if (_activeRoadmap?.id == roadmapId) {
+      _activeRoadmap = null;
+      _todayTasks = [];
+    }
+    await loadAllRoadmaps(userId);
+    notifyListeners();
+  }
+
 }

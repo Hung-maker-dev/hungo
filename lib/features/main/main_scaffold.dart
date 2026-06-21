@@ -10,7 +10,7 @@ import '../listening/listening_list_screen.dart';
 import '../profile/profile_screen.dart';
 import '../roadmap/roadmap_screen.dart';
 import '../writing/writing_list_screen.dart';
-
+import '../writing/my_submissions_screen.dart';
 class MainScaffold extends StatefulWidget {
   const MainScaffold({super.key});
   @override
@@ -83,6 +83,7 @@ class _MainScaffoldState extends State<MainScaffold> {
           ListeningListScreen(), // 4
           WritingListScreen(),   // 5
           ProfileScreen(),       // 6
+
         ],
       ),
       bottomNavigationBar: NavigationBar(

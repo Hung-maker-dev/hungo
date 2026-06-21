@@ -19,8 +19,9 @@ class DatabaseHelper {
     final path = join(await getDatabasesPath(), 'english_app.db');
     return await openDatabase(
       path,
-      version: 1,
+      version: 4,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
       onConfigure: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
       },
@@ -28,6 +29,189 @@ class DatabaseHelper {
         await db.rawQuery('PRAGMA journal_mode = WAL');
       },
     );
+  }
+  Future<void> _addColumnIfNotExists(
+      Database db,
+      String table,
+      String column,
+      String type,
+      ) async {
+    final columns = await db.rawQuery(
+      'PRAGMA table_info($table)',
+    );
+
+    final exists = columns.any(
+          (c) => c['name'] == column,
+    );
+
+    if (!exists) {
+      await db.execute(
+        'ALTER TABLE $table ADD COLUMN $column $type',
+      );
+    }
+  }
+  Future<void> _onUpgrade(
+      Database db,
+      int oldVersion,
+      int newVersion,
+      ) async {
+
+    // Version 3
+    if (oldVersion < 3) {
+      await _addColumnIfNotExists(
+        db,
+        'lessons',
+        'topic',
+        'TEXT',
+      );
+    }
+
+    // Version 4
+    if (oldVersion < 4) {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS writing_submissions (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        lesson_id    INTEGER NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+        question_id  INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+        user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        answer_text  TEXT NOT NULL,
+        status       TEXT NOT NULL DEFAULT 'pending',
+        score        INTEGER,
+        max_score    INTEGER,
+        feedback     TEXT,
+        submitted_at TEXT NOT NULL DEFAULT (datetime('now')),
+        graded_at    TEXT
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX idx_sub_user ON writing_submissions(user_id)');
+    await db.execute(
+      'CREATE INDEX idx_sub_lesson ON writing_submissions(lesson_id)');
+    await db.execute(
+      'CREATE INDEX idx_sub_status ON writing_submissions(status)');
+  }
+
+    // Version 5
+    if (oldVersion < 5) {
+      await _addColumnIfNotExists(
+        db,
+        'lessons',
+        'difficulty',
+        'TEXT',
+      );
+    }
+  }
+
+  // ── WRITING SUBMISSIONS ─────────────────────────────────────────────────
+
+  /// Học viên nộp bài — tạo row mới mỗi lần nộp (cho phép nộp lại)
+  Future<int> insertSubmission(Map<String, dynamic> data) async {
+    final db = await database;
+    return await db.insert('writing_submissions', data);
+  }
+
+  /// Lấy tất cả bài nộp của 1 user cho 1 question (để hiện lịch sử)
+  Future<List<Map<String, dynamic>>> getSubmissionsByUserAndQuestion({
+    required int userId,
+    required int questionId,
+  }) async {
+    final db = await database;
+    return await db.rawQuery('''
+      SELECT s.*,
+             l.title  AS lesson_title,
+             q.question_text
+      FROM   writing_submissions s
+      JOIN   lessons   l ON l.id = s.lesson_id
+      JOIN   questions q ON q.id = s.question_id
+      WHERE  s.user_id    = ?
+        AND  s.question_id = ?
+      ORDER  BY s.submitted_at DESC
+    ''', [userId, questionId]);
+  }
+
+  /// Lấy tất cả bài nộp của 1 user (cho trang "bài viết của tôi")
+  Future<List<Map<String, dynamic>>> getSubmissionsByUser(int userId) async {
+    final db = await database;
+    return await db.rawQuery('''
+      SELECT s.*,
+             l.title          AS lesson_title,
+             q.question_text
+      FROM   writing_submissions s
+      JOIN   lessons   l ON l.id = s.lesson_id
+      JOIN   questions q ON q.id = s.question_id
+      WHERE  s.user_id = ?
+      ORDER  BY s.submitted_at DESC
+    ''', [userId]);
+  }
+
+  /// Admin: lấy danh sách bài chờ chấm (status = 'pending')
+  Future<List<Map<String, dynamic>>> getPendingSubmissions() async {
+    final db = await database;
+    return await db.rawQuery('''
+      SELECT s.*,
+             u.username,
+             l.title          AS lesson_title,
+             q.question_text,
+             q.correct_ans    AS sample_answer,
+             q.points         AS max_score
+      FROM   writing_submissions s
+      JOIN   users     u ON u.id = s.user_id
+      JOIN   lessons   l ON l.id = s.lesson_id
+      JOIN   questions q ON q.id = s.question_id
+      WHERE  s.status = 'pending'
+      ORDER  BY s.submitted_at ASC
+    ''');
+  }
+
+  /// Admin: lấy tất cả bài (pending + graded) để xem lịch sử
+  Future<List<Map<String, dynamic>>> getAllSubmissions({String? status}) async {
+    final db = await database;
+    final where = status != null ? "WHERE s.status = '$status'" : '';
+    return await db.rawQuery('''
+      SELECT s.*,
+             u.username,
+             l.title          AS lesson_title,
+             q.question_text,
+             q.correct_ans    AS sample_answer,
+             q.points         AS max_score
+      FROM   writing_submissions s
+      JOIN   users     u ON u.id = s.user_id
+      JOIN   lessons   l ON l.id = s.lesson_id
+      JOIN   questions q ON q.id = s.question_id
+      $where
+      ORDER  BY s.submitted_at DESC
+    ''');
+  }
+
+  /// Admin chấm bài: cập nhật score + feedback + status
+  Future<void> gradeSubmission({
+    required int submissionId,
+    required int score,
+    required int maxScore,
+    String? feedback,
+  }) async {
+    final db = await database;
+    await db.update(
+      'writing_submissions',
+      {
+        'score':     score,
+        'max_score': maxScore,
+        'feedback':  feedback,
+        'status':    'graded',
+        'graded_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [submissionId],
+    );
+  }
+
+  /// Đếm số bài chờ chấm (dùng cho badge trên admin dashboard)
+  Future<int> countPendingSubmissions() async {
+    final db = await database;
+    final result = await db.rawQuery(
+      "SELECT COUNT(*) as c FROM writing_submissions WHERE status = 'pending'",
+    );
+    return result.first['c'] as int;
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -103,6 +287,7 @@ class DatabaseHelper {
         audio_url    TEXT,           -- cho bài listening
         thumbnail    TEXT,
         description  TEXT,
+        topic        TEXT,
         is_published INTEGER DEFAULT 1,
         created_by   INTEGER REFERENCES users(id),
         created_at   TEXT DEFAULT (datetime('now'))
@@ -204,6 +389,28 @@ class DatabaseHelper {
         created_at  TEXT DEFAULT (datetime('now'))
       )
     ''');
+
+    await db.execute('''
+      CREATE TABLE writing_submissions (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        lesson_id    INTEGER NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+        question_id  INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+        user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        answer_text  TEXT NOT NULL,
+        status       TEXT NOT NULL DEFAULT 'pending',
+        score        INTEGER,
+        max_score    INTEGER,
+        feedback     TEXT,
+        submitted_at TEXT NOT NULL DEFAULT (datetime('now')),
+        graded_at    TEXT
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX idx_sub_user ON writing_submissions(user_id)');
+    await db.execute(
+      'CREATE INDEX idx_sub_lesson ON writing_submissions(lesson_id)');
+    await db.execute(
+      'CREATE INDEX idx_sub_status ON writing_submissions(status)');
 
     // ── SEED DATA: admin + grammar topics ────────────────────────────────────
     await _seedData(db);

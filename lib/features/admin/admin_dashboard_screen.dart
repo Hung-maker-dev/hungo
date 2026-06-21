@@ -82,13 +82,33 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 12),
 
-            _MenuTile(
-              icon: Icons.add_circle_rounded, color: Colors.green,
-              title: 'Thêm bài học mới',
-              subtitle: 'Reading / Listening / Grammar',
-              onTap: () => Navigator.pushNamed(context, '/admin/lesson',
-                  arguments: null),
-            ),
+            // 4 nút thêm theo từng skill
+            const Text('Thêm bài học',
+                style: TextStyle(fontWeight: FontWeight.w600,
+                    fontSize: 13, color: Colors.grey)),
+            const SizedBox(height: 8),
+            Row(children: [
+              Expanded(child: _SkillBtn(icon: Icons.chrome_reader_mode_rounded,
+                  color: Colors.teal, label: 'Đọc',
+                  onTap: () => Navigator.pushNamed(context, '/admin/lesson',
+                      arguments: {'defaultSkill': 'reading'}))),
+              const SizedBox(width: 8),
+              Expanded(child: _SkillBtn(icon: Icons.headphones_rounded,
+                  color: Colors.blue, label: 'Nghe',
+                  onTap: () => Navigator.pushNamed(context, '/admin/lesson',
+                      arguments: {'defaultSkill': 'listening'}))),
+              const SizedBox(width: 8),
+              Expanded(child: _SkillBtn(icon: Icons.edit_note_rounded,
+                  color: Colors.orange, label: 'Ngữ pháp',
+                  onTap: () => Navigator.pushNamed(context, '/admin/lesson',
+                      arguments: {'defaultSkill': 'grammar'}))),
+              const SizedBox(width: 8),
+              Expanded(child: _SkillBtn(icon: Icons.edit_rounded,
+                  color: Colors.purple, label: 'Viết',
+                  onTap: () => Navigator.pushNamed(context, '/admin/lesson',
+                      arguments: {'defaultSkill': 'writing'}))),
+            ]),
+            const SizedBox(height: 12),
             _MenuTile(
               icon: Icons.library_books_rounded, color: Colors.blue,
               title: 'Quản lý bài học',
@@ -106,6 +126,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               title: 'Danh sách người dùng',
               subtitle: 'Quản lý tài khoản',
               onTap: () => Navigator.pushNamed(context, '/admin/users'),
+            ),
+            _MenuTile(
+              icon: Icons.grading_rounded,
+              color: Colors.red,
+              title: 'Chấm bài Writing',
+              subtitle: 'Xem và chấm điểm bài nộp',
+              onTap: () => Navigator.pushNamed(context, '/admin/grading'),
             ),
           ],
         ),
@@ -157,7 +184,7 @@ class _MenuTile extends StatelessWidget {
         leading: Container(
           width: 44, height: 44,
           decoration: BoxDecoration(
-              color: color.withOpacity(0.12), shape: BoxShape.circle),
+              color: color.withValues(alpha: 0.12), shape: BoxShape.circle),
           child: Icon(icon, color: color, size: 22),
         ),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
@@ -167,4 +194,32 @@ class _MenuTile extends StatelessWidget {
       ),
     );
   }
+}
+
+class _SkillBtn extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String label;
+  final VoidCallback onTap;
+  const _SkillBtn({required this.icon, required this.color,
+      required this.label, required this.onTap});
+  @override
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(12),
+    child: Container(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, color: color, size: 22),
+        const SizedBox(height: 4),
+        Text(label, style: TextStyle(color: color, fontSize: 11,
+            fontWeight: FontWeight.w600)),
+      ]),
+    ),
+  );
 }

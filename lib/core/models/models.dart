@@ -134,6 +134,7 @@ class GrammarTopic {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // lib/core/models/lesson_model.dart
+// lib/core/models/lesson_model.dart
 class LessonModel {
   final int? id;
   final String title;
@@ -145,11 +146,13 @@ class LessonModel {
   final String? description;
   final bool isPublished;
   final String? createdAt;
+  final String? topic;
 
   LessonModel({
     this.id, required this.title, required this.skill,
     this.level = 'A1', this.content, this.audioUrl, this.thumbnail,
     this.description, this.isPublished = true, this.createdAt,
+    this.topic, // ← THÊM
   });
 
   factory LessonModel.fromMap(Map<String, dynamic> m) => LessonModel(
@@ -159,6 +162,7 @@ class LessonModel {
     description: m['description'],
     isPublished: (m['is_published'] ?? 1) == 1,
     createdAt: m['created_at'],
+    topic: m['topic'], // ← THÊM
   );
 
   Map<String, dynamic> toMap() => {
@@ -166,6 +170,7 @@ class LessonModel {
     'title': title, 'skill': skill, 'level': level,
     'content': content, 'audio_url': audioUrl, 'thumbnail': thumbnail,
     'description': description, 'is_published': isPublished ? 1 : 0,
+    'topic': topic, // ← THÊM
   };
 }
 
@@ -267,4 +272,96 @@ class UserProgress {
     'is_completed': isCompleted ? 1 : 0, 'time_spent': timeSpent,
     'attempts': attempts, 'completed_at': completedAt,
   };
+}
+
+// lib/core/models/submission_model.dart
+
+class SubmissionModel {
+  final int?   id;
+  final int    lessonId;
+  final int    questionId;
+  final int    userId;
+  final String answerText;
+  final String status;      // 'pending' | 'graded'
+  final int?   score;
+  final int?   maxScore;
+  final String? feedback;
+  final String  submittedAt;
+  final String? gradedAt;
+
+  // join fields (không lưu DB)
+  final String? lessonTitle;
+  final String? questionText;
+  final String? username;
+
+  const SubmissionModel({
+    this.id,
+    required this.lessonId,
+    required this.questionId,
+    required this.userId,
+    required this.answerText,
+    this.status = 'pending',
+    this.score,
+    this.maxScore,
+    this.feedback,
+    required this.submittedAt,
+    this.gradedAt,
+    this.lessonTitle,
+    this.questionText,
+    this.username,
+  });
+
+  factory SubmissionModel.fromMap(Map<String, dynamic> m) => SubmissionModel(
+    id:            m['id'] as int?,
+    lessonId:      m['lesson_id'] as int,
+    questionId:    m['question_id'] as int,
+    userId:        m['user_id'] as int,
+    answerText:    m['answer_text'] as String,
+    status:        m['status'] as String? ?? 'pending',
+    score:         m['score'] as int?,
+    maxScore:      m['max_score'] as int?,
+    feedback:      m['feedback'] as String?,
+    submittedAt:   m['submitted_at'] as String,
+    gradedAt:      m['graded_at'] as String?,
+    lessonTitle:   m['lesson_title'] as String?,
+    questionText:  m['question_text'] as String?,
+    username:      m['username'] as String?,
+  );
+
+  Map<String, dynamic> toMap() => {
+    if (id != null) 'id': id,
+    'lesson_id':    lessonId,
+    'question_id':  questionId,
+    'user_id':      userId,
+    'answer_text':  answerText,
+    'status':       status,
+    if (score != null)    'score':    score,
+    if (maxScore != null) 'max_score': maxScore,
+    if (feedback != null) 'feedback': feedback,
+    'submitted_at': submittedAt,
+    if (gradedAt != null) 'graded_at': gradedAt,
+  };
+
+  SubmissionModel copyWith({
+    int? score,
+    int? maxScore,
+    String? status,
+    String? feedback,
+    String? gradedAt,
+  }) => SubmissionModel(
+    id:           id,
+    lessonId:     lessonId,
+    questionId:   questionId,
+    userId:       userId,
+    answerText:   answerText,
+    status:       status ?? this.status,
+    score:        score ?? this.score,
+    maxScore:     maxScore ?? this.maxScore,
+    feedback:     feedback ?? this.feedback,
+    submittedAt:  submittedAt,
+    gradedAt:     gradedAt ?? this.gradedAt,
+    lessonTitle:  lessonTitle,
+    questionText: questionText,
+    username:     username,
+  );
 }

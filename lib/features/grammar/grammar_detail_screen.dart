@@ -164,8 +164,8 @@ class GrammarDetailScreen extends StatelessWidget {
                         context,
                         '/grammar/exercise',
                         arguments: {
-                          'grammarId': t.id,
-                          'grammarName': t.name
+                          'grammarTopic': t.name,
+                          'grammarName': t.name,
                         },
                       ),
                       icon: const Icon(Icons.edit_rounded),
